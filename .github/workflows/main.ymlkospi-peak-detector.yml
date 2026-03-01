@@ -1,0 +1,47 @@
+name: 📈 코스피 고점 판독기
+
+on:
+  schedule:
+    # 매일 오후 5시 KST = UTC 08:00
+    - cron: '0 8 * * *'
+  workflow_dispatch:   # 수동 실행 허용
+
+permissions:
+  contents: write      # reports/ 폴더에 커밋하기 위한 권한
+
+jobs:
+  analyze:
+    name: "코스피 고점 판독기 — 4대 프레임워크 분석"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run KOSPI Peak Detector
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python analyze.py
+
+      - name: Commit and push report
+        run: |
+          git config user.name  "kospi-peak-detector[bot]"
+          git config user.email "kospi-peak-detector[bot]@users.noreply.github.com"
+          git add reports/
+          if git diff --staged --quiet; then
+            echo "변경 없음 — 커밋 스킵"
+          else
+            TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+            git commit -m "chore(report): KOSPI peak analysis ${TIMESTAMP}"
+            git push
+          fi
