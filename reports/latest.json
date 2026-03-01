@@ -1,0 +1,78 @@
+{
+  "timestamp": "2026-03-01T14:12:26.839981+09:00",
+  "risk_level": "CAUTION",
+  "risk_emoji": "🟠",
+  "total_warnings": 3,
+  "warnings": [
+    "⚠️ 200일 이격도 167.3% — 과열 구간 (기준: 120%)",
+    "⚠️ RSI 77.4 — 과매수 구간 (기준: 70 이상)",
+    "⚠️ 볼린저밴드 %B 96.6% — 상단 돌파 과열"
+  ],
+  "data": {
+    "valuation": {
+      "kospi_price": 6244.13,
+      "ma200": 3732.57,
+      "disparity_200d": 167.29,
+      "kospi_52w_high": 6307.27,
+      "kospi_52w_low": 2293.7,
+      "pct_from_52w_high": -1.0,
+      "warnings": [
+        "⚠️ 200일 이격도 167.3% — 과열 구간 (기준: 120%)"
+      ],
+      "warning_count": 1
+    },
+    "semiconductor": {
+      "samsung_price": 216500.0,
+      "samsung_ma20": 177970.0,
+      "samsung_above_ma20": true,
+      "samsung_ma60": 142282.0,
+      "samsung_above_ma60": true,
+      "samsung_ret_3m": 115.42,
+      "hynix_price": 1061000.0,
+      "hynix_ret_3m": 100.19,
+      "soxx_price": 352.29,
+      "soxx_ret_3m": 16.33,
+      "soxx_above_ma200": true,
+      "soxx_ma200": 277.64,
+      "nvda_price": 177.19,
+      "nvda_ret_3m": -2.35,
+      "nvda_above_ma200": true,
+      "signals": [],
+      "signal_count": 0
+    },
+    "supply_demand": {
+      "usdkrw": 1439.23,
+      "usdkrw_ma60": 1454.4,
+      "usdkrw_above_ma60": false,
+      "usdkrw_ret_3m": -2.25,
+      "ewy_price": 151.37,
+      "ewy_above_ma20": true,
+      "ewy_ret_3m": 64.41,
+      "ewy_above_ma200": true,
+      "ewy_ma200": 87.65,
+      "warnings": [],
+      "warning_count": 0
+    },
+    "technical": {
+      "rsi_14": 77.39,
+      "bb_upper": 6296.52,
+      "bb_lower": 4743.31,
+      "bb_pct": 96.63,
+      "ma20": 5519.91,
+      "macd": 333.69,
+      "macd_bullish": true,
+      "ma5": 6090.2,
+      "ma60": 4758.54,
+      "ma120": 4227.77,
+      "ma200": 3732.57,
+      "ma_perfect_align": true,
+      "warnings": [
+        "⚠️ RSI 77.4 — 과매수 구간 (기준: 70 이상)",
+        "⚠️ 볼린저밴드 %B 96.6% — 상단 돌파 과열"
+      ],
+      "ma_signals": [],
+      "warning_count": 2
+    }
+  },
+  "content": "<b>🎯 코스피 고점 위험도 종합 판단</b><br>\n[위험도: 🔴 위험]<br>\n<br>\n<b>📊 4대 프레임워크 스코어카드</b><br>\n- 밸류에이션 & 과열 지표: 5점 — 200일 이격도 167.3%로 과열 심화<br>\n- 반도체 업황 & 수출 데이터: 2점 — 삼성전자·SK하이닉스 3개월 100% 이상 상승, SOXX ETF 강세 유지<br>\n- 수급 & 심리 지표: 2점 — 외국인 수급 긍정적이나 공포지수 부재로 심리 판단 제한적<br>\n- 기술적 분석: 5점 — RSI 77.4, 볼린저밴드 %B 96.6%로 명확한 과매수 및 과열 신호<br>\n<br>\n<b>🔍 핵심 근거</b><br>\n1. <i>200일 이격도 167.29%</i>: 기준 120% 대비 크게 높아 단기 급등에 따른 과열 구간임을 시사<br>\n2. <i>RSI(14) 77.39</i>: 70 이상 과매수 구간으로 단기 조정 가능성 높음<br>\n3. <i>볼린저밴드 %B 96.63%</i>: 상단 밴드 돌파로 단기 가격 부담 가중<br>\n<br>\n<b>📈 시나리오 분석</b><br>\n- 강세 지속 시나리오: 반도체 업황 개선과 외국인 수급 강세가 지속되며 추가 상승 모멘텀 확보 가능<br>\n- 고점 형성 시나리오: 과열 신호 누적에 따른 단기 조정 및 변동성 확대, 투자심리 위축으로 고점 확인 후 조정 국면 진입 예상<br>\n<br>\n<b>⚡ 투자자 체크리스트</b><br>\n1. 200일 이격도 및 RSI 변화 추이 모니터링 — 과열 완화 여부 확인<br>\n2. 반도체 업황 및 주요 종목 실적 발표 동향 점검<br>\n3. 외국인 수급 및 공포지수(VKOSPI) 데이터 확보 및 심리 변화 관찰<br>\n<br>\n<i>생성 시각: 2026-03-01 14:12 KST | 본 리포트는 데이터 기반 분석이며 투자 판단의 참고용입니다.</i>"
+}
