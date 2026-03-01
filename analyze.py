@@ -761,6 +761,170 @@ def generate_ai_verdict(valuation, semiconductor, supply_demand, technical):
 {chr(10).join(f'  {w}' for w in all_warnings) if all_warnings else '  없음'}
 """
 
+    # ── 전체 체크리스트 생성 (정상 포함) ──────────────────────────────────
+    def fmt_check(label, value_str, status, normal_range, note=''):
+        """체크리스트 한 행 생성. status: 'DANGER'|'CAUTION'|'WATCH'|'NORMAL'"""
+        icon = {'DANGER': '🔴', 'CAUTION': '⚠️', 'WATCH': '⚡', 'NORMAL': '🟢'}.get(status, '🟢')
+        note_str = f' ({note})' if note else ''
+        return f'{icon} <b>{label}</b>: {value_str} | 기준: {normal_range}{note_str}'
+
+    # 밸류에이션 체크리스트
+    def val_status(buffett, disp252, samsung_fper, samsung_eg):
+        rows = []
+        # 버핏 지수
+        if buffett != 'N/A' and buffett is not None:
+            if buffett > 180:   st = 'DANGER'
+            elif buffett > 150: st = 'CAUTION'
+            elif buffett > 120: st = 'WATCH'
+            else:               st = 'NORMAL'
+            rows.append(fmt_check('버핏 지수', f'{buffett:.1f}%', st, '정상 <120% / 주의 150%+ / 위험 180%+'))
+        # 12개월 이격도
+        if disp252 != 'N/A' and disp252 is not None:
+            if disp252 > 130:   st = 'DANGER'
+            elif disp252 > 120: st = 'CAUTION'
+            elif disp252 > 110: st = 'WATCH'
+            else:               st = 'NORMAL'
+            rows.append(fmt_check('12개월 이격도', f'{disp252:.1f}%', st, '정상 <110% / 주의 120%+ / 위험 130%+', '과거 고점 2~4개월 선행'))
+        # 삼성전자 Forward PER
+        if samsung_fper != 'N/A' and samsung_fper is not None:
+            if samsung_fper > 15:   st = 'DANGER'
+            elif samsung_fper > 13: st = 'CAUTION'
+            elif samsung_fper > 10: st = 'WATCH'
+            else:                   st = 'NORMAL'
+            rows.append(fmt_check('삼성전자 Forward PER', f'{samsung_fper:.2f}배', st, '역사적 상단 13배 / AI 리레이팅 진행 중'))
+        # 삼성전자 이익 성장률
+        if samsung_eg != 'N/A' and samsung_eg is not None:
+            eg_pct = samsung_eg * 100 if abs(samsung_eg) < 10 else samsung_eg
+            if eg_pct < 0:    st = 'DANGER'
+            elif eg_pct < 10: st = 'WATCH'
+            else:             st = 'NORMAL'
+            rows.append(fmt_check('삼성전자 이익 성장률', f'{eg_pct:.1f}%', st, '이익 컨센서스 하향 시 고점 선행 신호'))
+        return rows
+
+    # 반도체 체크리스트
+    def semi_status(samsung_3m, hynix_3m, soxx_3m, nvda_3m, rel_strength,
+                    sam_above_ma200, hyx_above_ma200, soxx_above_ma200):
+        rows = []
+        for name, ret, above200 in [
+            ('삼성전자 3개월 수익률', samsung_3m, sam_above_ma200),
+            ('SK하이닉스 3개월 수익률', hynix_3m, hyx_above_ma200),
+            ('SOXX(글로벌 반도체) 3개월', soxx_3m, soxx_above_ma200),
+            ('NVIDIA 3개월 수익률', nvda_3m, None),
+        ]:
+            if ret != 'N/A' and ret is not None:
+                if ret < -15:   st = 'DANGER'
+                elif ret < -8:  st = 'CAUTION'
+                elif ret < 0:   st = 'WATCH'
+                else:           st = 'NORMAL'
+                ma_note = '' if above200 is None else ('200일MA 위 ✅' if above200 else '200일MA 하향 이탈 ❌')
+                rows.append(fmt_check(name, f'{ret:+.1f}%', st, '정상 0%+ / 주의 -8%↓ / 위험 -15%↓', ma_note))
+        if rel_strength != 'N/A' and rel_strength is not None:
+            if rel_strength > 20:   st = 'CAUTION'
+            elif rel_strength > 10: st = 'WATCH'
+            else:                   st = 'NORMAL'
+            rows.append(fmt_check('하이닉스-삼성 상대강도(3M)', f'{rel_strength:+.1f}%p', st, 'HBM 쏠림 주의 +20%p+'))
+        return rows
+
+    # 수급/심리 체크리스트
+    def supply_status(rv_20, vix, usdkrw_ret3m, ewy_ret3m, lev_vol_ratio,
+                      ewy_above_ma200, usdkrw_above_ma60):
+        rows = []
+        if rv_20 != 'N/A' and rv_20 is not None:
+            if rv_20 > 40:   st = 'DANGER'
+            elif rv_20 > 25: st = 'CAUTION'
+            elif rv_20 > 15: st = 'WATCH'
+            else:            st = 'NORMAL'
+            rows.append(fmt_check('코스피 20일 실현변동성(VKOSPI 프록시)', f'{rv_20:.1f}%', st, '정상 <15% / 불안 25%+ / 공포 40%+'))
+        if vix != 'N/A' and vix is not None:
+            if vix > 30:   st = 'DANGER'
+            elif vix > 20: st = 'CAUTION'
+            elif vix > 15: st = 'WATCH'
+            else:          st = 'NORMAL'
+            rows.append(fmt_check('VIX(미국 공포지수)', f'{vix:.1f}', st, '정상 <15 / 불안 20+ / 공포 30+'))
+        if usdkrw_ret3m != 'N/A' and usdkrw_ret3m is not None:
+            if usdkrw_ret3m > 5:   st = 'DANGER'
+            elif usdkrw_ret3m > 2: st = 'CAUTION'
+            elif usdkrw_ret3m > 0: st = 'WATCH'
+            else:                  st = 'NORMAL'
+            rows.append(fmt_check('USD/KRW 3개월 변화', f'{usdkrw_ret3m:+.1f}%', st, '정상 0%↓ / 주의 +2%+ / 위험 +5%+', '상승=외국인 이탈'))
+        if ewy_ret3m != 'N/A' and ewy_ret3m is not None:
+            if ewy_ret3m < -10:  st = 'DANGER'
+            elif ewy_ret3m < -5: st = 'CAUTION'
+            elif ewy_ret3m < 0:  st = 'WATCH'
+            else:                st = 'NORMAL'
+            ma_note = '' if ewy_above_ma200 is None else ('200일MA 위 ✅' if ewy_above_ma200 else '200일MA 하향 이탈 ❌')
+            rows.append(fmt_check('EWY(외국인 수급 프록시) 3개월', f'{ewy_ret3m:+.1f}%', st, '정상 0%+ / 주의 -5%↓', ma_note))
+        if lev_vol_ratio != 'N/A' and lev_vol_ratio is not None:
+            if lev_vol_ratio > 1.5:   st = 'DANGER'
+            elif lev_vol_ratio > 1.2: st = 'CAUTION'
+            elif lev_vol_ratio > 1.0: st = 'WATCH'
+            else:                     st = 'NORMAL'
+            rows.append(fmt_check('레버리지ETF 거래량(20일/60일)', f'{lev_vol_ratio:.2f}x', st, '정상 <1.0x / 주의 1.2x+ / 위험 1.5x+', '빚투 과열 지표'))
+        return rows
+
+    # 기술적 체크리스트
+    def tech_status(rsi, bb_pct, macd_hist, ma_align, disp252, elliott_pos, elliott_risk):
+        rows = []
+        if rsi != 'N/A' and rsi is not None:
+            if rsi > 80:   st = 'DANGER'
+            elif rsi > 70: st = 'CAUTION'
+            elif rsi < 30: st = 'WATCH'
+            else:          st = 'NORMAL'
+            rows.append(fmt_check('RSI(14)', f'{rsi:.1f}', st, '정상 30~70 / 과매수 70+ / 극단 80+'))
+        if bb_pct is not None and bb_pct != 'N/A':
+            if bb_pct > 95:   st = 'DANGER'
+            elif bb_pct > 80: st = 'CAUTION'
+            elif bb_pct > 60: st = 'WATCH'
+            else:             st = 'NORMAL'
+            rows.append(fmt_check('볼린저밴드 %B', f'{bb_pct:.1f}%', st, '정상 20~80% / 과열 80%+ / 극단 95%+'))
+        if macd_hist is not None and macd_hist != 'N/A':
+            if macd_hist < -50:   st = 'DANGER'
+            elif macd_hist < 0:   st = 'CAUTION'
+            else:                 st = 'NORMAL'
+            rows.append(fmt_check('MACD 히스토그램', f'{macd_hist:.1f}', st, '정상 0+ / 주의 음전환'))
+        if ma_align is not None:
+            st = 'NORMAL' if ma_align else 'WATCH'
+            rows.append(fmt_check('이평선 배열(5/20/60/120/200일)', '정배열 ✅' if ma_align else '비정배열 ❌', st, '정배열=상승 추세 유지'))
+        if disp252 != 'N/A' and disp252 is not None:
+            if disp252 > 130:   st = 'DANGER'
+            elif disp252 > 120: st = 'CAUTION'
+            elif disp252 > 110: st = 'WATCH'
+            else:               st = 'NORMAL'
+            rows.append(fmt_check('12개월 이격도(기술적)', f'{disp252:.1f}%', st, '과열 120%+ / 극단 130%+'))
+        if elliott_risk:
+            st_map = {'DANGER': 'DANGER', 'CAUTION': 'CAUTION', 'WATCH': 'WATCH', 'NORMAL': 'NORMAL'}
+            st = st_map.get(elliott_risk, 'NORMAL')
+            rows.append(fmt_check('엘리어트 파동 위치', elliott_pos, st, '5파 말미=고점 경고 / 조정파=매수 기회'))
+        return rows
+
+    # 각 체크리스트 생성
+    val_rows  = val_status(buffett_ratio, disp_252, samsung_fper, samsung_eg)
+    semi_rows = semi_status(
+        samsung_3m, hynix_3m, soxx_3m, nvda_3m, rel_strength,
+        semiconductor.get('samsung', {}).get('above_ma_200d'),
+        semiconductor.get('hynix', {}).get('above_ma_200d'),
+        semiconductor.get('soxx_above_ma200'),
+    )
+    sup_rows  = supply_status(
+        rv_20, vix, usdkrw_3m, ewy_3m, lev_vol_ratio,
+        supply_demand.get('ewy_above_ma200'),
+        supply_demand.get('usdkrw_above_ma60'),
+    )
+    tec_rows  = tech_status(
+        rsi, bb_pct, macd_hist,
+        technical.get('ma_perfect_align'),
+        disp_252,
+        elliott_pos,
+        technical.get('elliott', {}).get('wave_risk'),
+    )
+
+    checklist_block = (
+        '<b>① 밸류에이션 & 과열</b><br>' + '<br>'.join(val_rows) + '<br><br>'
+        '<b>② 반도체 업황</b><br>' + '<br>'.join(semi_rows) + '<br><br>'
+        '<b>③ 수급 & 심리</b><br>' + '<br>'.join(sup_rows) + '<br><br>'
+        '<b>④ 기술적 분석</b><br>' + '<br>'.join(tec_rows)
+    )
+
     prompt = f"""{summary_data}
 
 당신은 삼성디스플레이 AI팀 임원에게 브리핑하는 한국 주식시장 전문 퀀트 애널리스트입니다.
@@ -768,6 +932,9 @@ def generate_ai_verdict(valuation, semiconductor, supply_demand, technical):
 
 핵심 분석 논리:
 "단순한 지수 하락보다는 반도체 이익 전망치의 훼손(Fundamental)과 이격도 과다에 따른 기술적 부담(Technical)이 결합되는 시점을 중장기 변곡점으로 본다."
+
+아래에 전체 지표 체크리스트가 이미 생성되어 있습니다 (🟢 정상 포함):
+{checklist_block}
 
 다음 형식으로 정확히 작성하세요 (HTML 태그: <b>, <i>, <br>, <hr>만 사용):
 
@@ -781,6 +948,9 @@ def generate_ai_verdict(valuation, semiconductor, supply_demand, technical):
 수급/심리: [1~5점] — [핵심 수치 인용하여 한 줄 요약]<br>
 기술적 분석: [1~5점] — [핵심 수치 인용하여 한 줄 요약]<br>
 <i>(1점=안전, 5점=극단 위험)</i><br>
+<hr>
+<b>📋 전체 지표 체크리스트 (🟢 정상 / ⚡ 경계 / ⚠️ 주의 / 🔴 위험)</b><br>
+{checklist_block}<br>
 <hr>
 <b>🔍 핵심 근거 Top 3</b><br>
 ① [가장 중요한 신호: 구체적 수치 + 역사적 맥락 + 의미 해석, 2~3문장]<br>
@@ -820,13 +990,13 @@ def generate_ai_verdict(valuation, semiconductor, supply_demand, technical):
 <b>위험도: {pre_risk}</b><br>
 총 {total_warnings}건의 경고 신호 감지 (🔴 위험 {danger_count}건 / ⚠️ 주의 {caution_count}건).<br>
 <hr>
-<b>📊 실시간 핵심 지표</b><br>
+<b>📊 실시간 핵심 지표 요약</b><br>
 코스피: {kospi_price:,}pt | 버핏 지수: {buffett_ratio}% | 12개월 이격도: {disp_252}%<br>
 RSI(14): {rsi} | 볼린저밴드 %B: {bb_pct}% | 20일 실현변동성: {rv_20}%<br>
 삼성전자 Forward PER: {samsung_fper}배 | USD/KRW: {usdkrw:,}원 | VIX: {vix}<br>
 <hr>
-<b>⚠️ 감지된 경고 신호 ({total_warnings}건)</b><br>
-{'<br>'.join(all_warnings) if all_warnings else '현재 주요 경고 신호 없음'}<br>
+<b>📋 전체 지표 체크리스트 (🟢 정상 / ⚡ 경계 / ⚠️ 주의 / 🔴 위험)</b><br>
+{checklist_block}<br>
 <hr>
 <b>📈 엘리어트 파동 위치</b><br>
 {elliott_pos}: {elliott_desc}<br>
