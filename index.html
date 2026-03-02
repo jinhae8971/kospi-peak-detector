@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📈 코스피 고점 판독기</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f172a;--card:#1e293b;--border:#334155;
+  --text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;
+  --green:#22c55e;--yellow:#eab308;--orange:#f97316;--red:#ef4444;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;padding:16px;max-width:1200px;margin:0 auto}
+h1{font-size:1.6rem;margin-bottom:4px}
+.subtitle{color:var(--muted);font-size:.85rem;margin-bottom:20px}
+.risk-banner{padding:20px;border-radius:12px;margin-bottom:20px;text-align:center;font-size:1.1rem;font-weight:700}
+.risk-DANGER{background:linear-gradient(135deg,#991b1b,#7f1d1d);border:2px solid var(--red)}
+.risk-WARNING{background:linear-gradient(135deg,#92400e,#78350f);border:2px solid var(--orange)}
+.risk-CAUTION{background:linear-gradient(135deg,#854d0e,#713f12);border:2px solid var(--yellow)}
+.risk-NORMAL{background:linear-gradient(135deg,#166534,#14532d);border:2px solid var(--green)}
+.risk-emoji{font-size:2.5rem;display:block;margin-bottom:8px}
+.risk-label{font-size:1.4rem}
+.risk-count{font-size:.9rem;color:rgba(255,255,255,.8);margin-top:4px}
+
+.grid{display:grid;gap:16px;margin-bottom:16px}
+.grid-2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.grid-3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.grid-4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.card h2{font-size:1rem;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.card h3{font-size:.85rem;color:var(--muted);margin:10px 0 6px}
+
+.metric{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(51,65,85,.5)}
+.metric:last-child{border-bottom:none}
+.metric-label{color:var(--muted);font-size:.82rem}
+.metric-value{font-weight:600;font-size:.9rem}
+
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.dot-green{background:var(--green)}.dot-yellow{background:var(--yellow)}.dot-orange{background:var(--orange)}.dot-red{background:var(--red)}
+
+.warning-list{list-style:none;padding:0}
+.warning-list li{padding:8px 10px;margin-bottom:6px;border-radius:6px;font-size:.82rem;background:rgba(239,68,68,.1);border-left:3px solid var(--red)}
+.warning-list li.caution{background:rgba(234,179,8,.1);border-left-color:var(--yellow)}
+
+.bar-container{background:rgba(51,65,85,.5);border-radius:4px;height:8px;overflow:hidden;margin-top:4px}
+.bar-fill{height:100%;border-radius:4px;transition:width .3s}
+
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:600}
+.tag-danger{background:rgba(239,68,68,.2);color:var(--red)}
+.tag-warning{background:rgba(249,115,22,.2);color:var(--orange)}
+.tag-caution{background:rgba(234,179,8,.2);color:var(--yellow)}
+.tag-normal{background:rgba(34,197,94,.2);color:var(--green)}
+
+.chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{padding:4px 10px;border-radius:16px;font-size:.78rem;background:var(--border);color:var(--text)}
+
+.stock-card{display:flex;gap:12px;align-items:center;padding:10px;background:rgba(51,65,85,.3);border-radius:8px;margin-bottom:8px}
+.stock-icon{font-size:1.5rem}
+.stock-info{flex:1}
+.stock-price{font-size:1.1rem;font-weight:700}
+.stock-sub{color:var(--muted);font-size:.78rem}
+.stock-returns{display:flex;gap:8px;flex-wrap:wrap}
+.ret{font-size:.75rem;padding:2px 6px;border-radius:4px}
+.ret-up{background:rgba(34,197,94,.15);color:var(--green)}
+.ret-down{background:rgba(239,68,68,.15);color:var(--red)}
+
+.elliott-box{background:linear-gradient(135deg,rgba(239,68,68,.1),rgba(239,68,68,.05));border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:14px;margin-top:10px}
+.elliott-box.normal{background:linear-gradient(135deg,rgba(34,197,94,.1),rgba(34,197,94,.05));border-color:rgba(34,197,94,.3)}
+
+.ts{text-align:center;color:var(--muted);font-size:.75rem;padding:16px 0;border-top:1px solid var(--border);margin-top:16px}
+
+.loading{text-align:center;padding:60px;color:var(--muted)}
+.loading .spinner{display:inline-block;width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.back-link{display:inline-block;color:var(--accent);text-decoration:none;font-size:.85rem;margin-bottom:12px;opacity:.8}
+.back-link:hover{opacity:1;text-decoration:underline}
+
+@media(max-width:600px){
+  body{padding:10px}
+  h1{font-size:1.3rem}
+  .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<a class="back-link" href="https://jinhae8971.github.io/github-actions-dashboard/">← 대시보드로 돌아가기</a>
+<h1>📈 코스피 중장기 고점 판독기</h1>
+<p class="subtitle">4대 프레임워크 기반 자동 분석 · 매일 17:00 KST 업데이트</p>
+
+<div id="app">
+  <div class="loading"><div class="spinner"></div><p style="margin-top:12px">분석 데이터 로딩 중...</p></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmt = (n, d=1) => n == null ? '-' : Number(n).toLocaleString('ko-KR', {minimumFractionDigits:d, maximumFractionDigits:d});
+const fmtInt = n => n == null ? '-' : Number(n).toLocaleString('ko-KR');
+const pct = n => n == null ? '-' : (n >= 0 ? '+' : '') + fmt(n) + '%';
+
+function riskColor(level) {
+  const m = {DANGER:'red',WARNING:'orange',CAUTION:'yellow',NORMAL:'green'};
+  return m[level] || 'muted';
+}
+function riskTag(level) {
+  const cls = {DANGER:'danger',WARNING:'warning',CAUTION:'caution',NORMAL:'normal'}[level]||'normal';
+  return `<span class="tag tag-${cls}">${level}</span>`;
+}
+function dotFor(ok, warn) {
+  if (warn) return '<span class="status-dot dot-red"></span>';
+  if (ok === false) return '<span class="status-dot dot-yellow"></span>';
+  return '<span class="status-dot dot-green"></span>';
+}
+function retSpan(val, label) {
+  if (val == null) return '';
+  const cls = val >= 0 ? 'ret-up' : 'ret-down';
+  return `<span class="ret ${cls}">${label} ${pct(val)}</span>`;
+}
+function barHTML(value, max, color) {
+  const w = Math.min(100, (value/max)*100);
+  return `<div class="bar-container"><div class="bar-fill" style="width:${w}%;background:var(--${color})"></div></div>`;
+}
+
+async function loadData() {
+  try {
+    const r = await fetch('reports/latest.json?t=' + Date.now());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } catch(e) {
+    console.error('데이터 로드 실패:', e);
+    return null;
+  }
+}
+
+function render(d) {
+  const {data, risk_level, risk_emoji, total_warnings, warnings, timestamp, content} = d;
+  const v = data.valuation;
+  const semi = data.semiconductor;
+  const sd = data.supply_demand;
+  const tech = data.technical;
+  const el = tech.elliott || {};
+
+  const ts = new Date(timestamp);
+  const tsStr = ts.toLocaleString('ko-KR', {timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+
+  let dangerCnt = 0, cautionCnt = 0;
+  warnings.forEach(w => { if(w.includes('🔴')) dangerCnt++; else cautionCnt++; });
+
+  let html = '';
+
+  // Risk Banner
+  html += `
+  <div class="risk-banner risk-${risk_level}">
+    <span class="risk-emoji">${risk_emoji}</span>
+    <div class="risk-label">위험도: ${risk_level}</div>
+    <div class="risk-count">🔴 위험 ${dangerCnt}건 · ⚠️ 주의 ${cautionCnt}건 — 총 ${total_warnings}건 경고</div>
+  </div>`;
+
+  // Key Metrics Chips
+  html += `<div class="chip-row">
+    <div class="chip">코스피 ${fmtInt(v.kospi_price)}pt</div>
+    <div class="chip">버핏지수 ${fmt(v.buffett_ratio)}%</div>
+    <div class="chip">이격도(12M) ${fmt(v.disparity_252d)}%</div>
+    <div class="chip">RSI ${fmt(tech.rsi_14)}</div>
+    <div class="chip">BB%B ${fmt(tech.bb_pct)}%</div>
+    <div class="chip">변동성(20D) ${fmt(sd.realized_vol_20d)}%</div>
+    <div class="chip">USD/KRW ${fmtInt(sd.usdkrw)}</div>
+    <div class="chip">VIX ${fmt(sd.vix)}</div>
+  </div>`;
+
+  // Warnings
+  html += `<div class="card" style="margin-bottom:16px">
+    <h2>🚨 경고 신호 목록</h2>
+    <ul class="warning-list">
+      ${warnings.map(w => `<li class="${w.includes('🔴')?'':'caution'}">${w}</li>`).join('')}
+    </ul>
+  </div>`;
+
+  // 4 Framework Grid
+  html += '<div class="grid grid-2">';
+
+  // 1. Valuation
+  html += `<div class="card">
+    <h2>① 밸류에이션 & 과열</h2>
+    <div class="metric"><span class="metric-label">코스피</span><span class="metric-value">${fmtInt(v.kospi_price)} pt</span></div>
+    <div class="metric"><span class="metric-label">52주 고점</span><span class="metric-value">${fmtInt(v.kospi_52w_high)} (${pct(v.pct_from_52w_high)})</span></div>
+    <div class="metric"><span class="metric-label">버핏 지수 (시총/GDP)</span><span class="metric-value" style="color:var(--${v.buffett_ratio>=180?'red':v.buffett_ratio>=150?'orange':'green'})">${fmt(v.buffett_ratio)}%</span></div>
+    ${barHTML(v.buffett_ratio, 200, v.buffett_ratio>=180?'red':v.buffett_ratio>=150?'orange':'green')}
+    <div class="metric"><span class="metric-label">12개월 이격도</span><span class="metric-value" style="color:var(--${v.disparity_252d>=130?'red':v.disparity_252d>=120?'orange':'green'})">${fmt(v.disparity_252d)}%</span></div>
+    ${barHTML(v.disparity_252d, 200, v.disparity_252d>=130?'red':v.disparity_252d>=120?'orange':'green')}
+    <div class="metric"><span class="metric-label">200일 이격도</span><span class="metric-value">${fmt(v.disparity_200d)}%</span></div>
+    <div class="metric"><span class="metric-label">60일 이격도</span><span class="metric-value">${fmt(v.disparity_60d)}%</span></div>
+    <h3>삼성전자</h3>
+    <div class="metric"><span class="metric-label">Forward PER</span><span class="metric-value">${fmt(v.samsung_forward_per)}</span></div>
+    <div class="metric"><span class="metric-label">이익 성장률</span><span class="metric-value" style="color:var(--green)">${pct(v.samsung_earnings_growth ? v.samsung_earnings_growth*100 : null)}</span></div>
+    <div class="metric"><span class="metric-label">컨센서스 목표가</span><span class="metric-value">${fmtInt(v.samsung_target_price)}원</span></div>
+    <h3>SK하이닉스</h3>
+    <div class="metric"><span class="metric-label">Forward PER</span><span class="metric-value">${fmt(v.hynix_forward_per)}</span></div>
+    <div class="metric"><span class="metric-label">컨센서스 목표가</span><span class="metric-value">${fmtInt(v.hynix_target_price)}원</span></div>
+    <div class="metric"><span class="metric-label">시총 합산 (삼+하)</span><span class="metric-value">${fmt(v.samsung_hynix_combined_mcap)}조</span></div>
+    <div class="metric"><span class="metric-label">코스피 내 비중</span><span class="metric-value">${fmt(v.samsung_hynix_weight_est ? v.samsung_hynix_weight_est*100 : null)}%</span></div>
+  </div>`;
+
+  // 2. Semiconductor
+  html += `<div class="card">
+    <h2>② 반도체 업황</h2>
+    <div class="stock-card">
+      <div class="stock-icon">🏭</div>
+      <div class="stock-info">
+        <div class="stock-price">삼성전자 ${fmtInt(semi.samsung.price)}원</div>
+        <div class="stock-sub">52주高 ${fmtInt(semi.samsung['52w_high'])} (${pct(semi.samsung.pct_from_52w_high)})</div>
+        <div class="stock-returns">
+          ${retSpan(semi.samsung.ret_1m, '1M')}${retSpan(semi.samsung.ret_3m, '3M')}${retSpan(semi.samsung.ret_6m, '6M')}${retSpan(semi.samsung.ret_12m, '12M')}
+        </div>
+        <div style="margin-top:4px;font-size:.75rem;color:var(--muted)">
+          ${semi.samsung.above_ma_200d ? '🟢' : '🔴'} 200MA ${semi.samsung.above_ma_200d ? '위' : '아래'} ·
+          ${semi.samsung.above_ma_60d ? '🟢' : '🔴'} 60MA ${semi.samsung.above_ma_60d ? '위' : '아래'}
+        </div>
+      </div>
+    </div>
+    <div class="stock-card">
+      <div class="stock-icon">💾</div>
+      <div class="stock-info">
+        <div class="stock-price">SK하이닉스 ${fmtInt(semi.hynix.price)}원</div>
+        <div class="stock-sub">52주高 ${fmtInt(semi.hynix['52w_high'])} (${pct(semi.hynix.pct_from_52w_high)})</div>
+        <div class="stock-returns">
+          ${retSpan(semi.hynix.ret_1m, '1M')}${retSpan(semi.hynix.ret_3m, '3M')}${retSpan(semi.hynix.ret_6m, '6M')}${retSpan(semi.hynix.ret_12m, '12M')}
+        </div>
+        <div style="margin-top:4px;font-size:.75rem;color:var(--muted)">
+          ${semi.hynix.above_ma_200d ? '🟢' : '🔴'} 200MA ${semi.hynix.above_ma_200d ? '위' : '아래'} ·
+          ${semi.hynix.above_ma_60d ? '🟢' : '🔴'} 60MA ${semi.hynix.above_ma_60d ? '위' : '아래'}
+        </div>
+      </div>
+    </div>
+    <h3>글로벌 반도체</h3>
+    <div class="metric"><span class="metric-label">SOXX (반도체 ETF)</span><span class="metric-value">${fmt(semi.soxx_price)} (3M ${pct(semi.soxx_ret_3m)})</span></div>
+    <div class="metric"><span class="metric-label">SOXX 200MA 이격도</span><span class="metric-value">${fmt(semi.soxx_disparity_200d)}%</span></div>
+    <div class="metric"><span class="metric-label">NVDA</span><span class="metric-value">${fmt(semi.nvda_price)} (3M ${pct(semi.nvda_ret_3m)})</span></div>
+    <div class="metric"><span class="metric-label">NVDA 200MA 이격도</span><span class="metric-value">${fmt(semi.nvda_disparity_200d)}%</span></div>
+    <div class="metric"><span class="metric-label">하이닉스-삼성 상대강도(3M)</span><span class="metric-value">${pct(semi.hynix_vs_samsung_rel_3m)}</span></div>
+  </div>`;
+
+  // 3. Supply & Demand
+  html += `<div class="card">
+    <h2>③ 수급 & 심리</h2>
+    <h3>변동성</h3>
+    <div class="metric"><span class="metric-label">20일 실현변동성 (VKOSPI↔)</span><span class="metric-value" style="color:var(--${sd.realized_vol_20d>=40?'red':sd.realized_vol_20d>=25?'orange':'green'})">${fmt(sd.realized_vol_20d)}%</span></div>
+    ${barHTML(sd.realized_vol_20d, 60, sd.realized_vol_20d>=40?'red':sd.realized_vol_20d>=25?'orange':'green')}
+    <div class="metric"><span class="metric-label">60일 실현변동성</span><span class="metric-value">${fmt(sd.realized_vol_60d)}%</span></div>
+    <div class="metric"><span class="metric-label">1년 실현변동성</span><span class="metric-value">${fmt(sd.realized_vol_1y)}%</span></div>
+    <div class="metric"><span class="metric-label">VIX (미국 공포지수)</span><span class="metric-value" style="color:var(--${sd.vix>=30?'red':sd.vix>=20?'yellow':'green'})">${fmt(sd.vix)}</span></div>
+    <h3>외국인 수급</h3>
+    <div class="metric"><span class="metric-label">USD/KRW</span><span class="metric-value">${fmtInt(sd.usdkrw)} (3M ${pct(sd.usdkrw_ret_3m)})</span></div>
+    <div class="metric"><span class="metric-label">USD/KRW 60MA</span><span class="metric-value">${fmtInt(sd.usdkrw_ma60)} ${sd.usdkrw_above_ma60 ? '🔴 위' : '🟢 아래'}</span></div>
+    <div class="metric"><span class="metric-label">EWY (한국 ETF)</span><span class="metric-value">${fmt(sd.ewy_price)}</span></div>
+    <div class="metric"><span class="metric-label">EWY 수익률</span>
+      <span class="metric-value">${retSpan(sd.ewy_ret_1m,'1M')} ${retSpan(sd.ewy_ret_3m,'3M')}</span>
+    </div>
+    <div class="metric"><span class="metric-label">EWY 200MA 이격도</span><span class="metric-value">${fmt(sd.ewy_disparity_200d)}%</span></div>
+    <h3>빚투 과열</h3>
+    <div class="metric"><span class="metric-label">레버리지ETF 거래량비</span><span class="metric-value" style="color:var(--${sd.kodex_lev_vol_ratio>=1.5?'red':sd.kodex_lev_vol_ratio>=1.2?'orange':'green'})">${fmt(sd.kodex_lev_vol_ratio,2)}x</span></div>
+  </div>`;
+
+  // 4. Technical
+  const elliottRisk = el.wave_risk || 'NORMAL';
+  html += `<div class="card">
+    <h2>④ 기술적 분석</h2>
+    <div class="metric"><span class="metric-label">RSI(14)</span><span class="metric-value" style="color:var(--${tech.rsi_14>=80?'red':tech.rsi_14>=70?'orange':'green'})">${fmt(tech.rsi_14)}</span></div>
+    ${barHTML(tech.rsi_14, 100, tech.rsi_14>=80?'red':tech.rsi_14>=70?'orange':'green')}
+    <div class="metric"><span class="metric-label">볼린저밴드 %B</span><span class="metric-value" style="color:var(--${tech.bb_pct>=95?'red':tech.bb_pct>=80?'orange':'green'})">${fmt(tech.bb_pct)}%</span></div>
+    ${barHTML(tech.bb_pct, 100, tech.bb_pct>=95?'red':tech.bb_pct>=80?'orange':'green')}
+    <div class="metric"><span class="metric-label">MACD 히스토그램</span><span class="metric-value" style="color:var(--${tech.macd_bullish?'green':'red'})">${fmt(tech.macd_histogram)} ${tech.macd_bullish?'📈':'📉'}</span></div>
+    <div class="metric"><span class="metric-label">이평선 정배열</span><span class="metric-value">${tech.ma_perfect_align?'✅ 정배열':'❌ 역배열'}</span></div>
+    <h3>이동평균</h3>
+    <div class="metric"><span class="metric-label">5일</span><span class="metric-value">${fmtInt(tech.ma_5d)}</span></div>
+    <div class="metric"><span class="metric-label">20일</span><span class="metric-value">${fmtInt(tech.ma_20d)}</span></div>
+    <div class="metric"><span class="metric-label">60일</span><span class="metric-value">${fmtInt(tech.ma_60d)}</span></div>
+    <div class="metric"><span class="metric-label">120일</span><span class="metric-value">${fmtInt(tech.ma_120d)}</span></div>
+    <div class="metric"><span class="metric-label">200일</span><span class="metric-value">${fmtInt(tech.ma_200d)}</span></div>
+    <div class="metric"><span class="metric-label">252일 (12M)</span><span class="metric-value">${fmtInt(tech.ma_252d)}</span></div>
+    <div class="elliott-box ${elliottRisk==='NORMAL'?'normal':''}">
+      <div style="font-weight:700;margin-bottom:6px">🌊 엘리어트 파동 ${riskTag(elliottRisk)}</div>
+      <div style="font-size:.85rem">${el.wave_position || '-'}</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-top:6px">${el.wave_desc || ''}</div>
+      <div style="margin-top:8px;font-size:.78rem;display:flex;gap:12px;flex-wrap:wrap">
+        <span>2Y 저점 대비: <b style="color:var(--green)">${pct(el.pct_from_2y_low)}</b></span>
+        <span>2Y 고점 대비: <b style="color:var(--red)">${pct(el.pct_from_2y_high)}</b></span>
+      </div>
+    </div>
+  </div>`;
+
+  html += '</div>'; // grid-2
+
+  // Timestamp
+  html += `<div class="ts">마지막 업데이트: ${tsStr} · ⚠️ 본 리포트는 AI 기반 자동 분석으로, 투자 권유가 아닙니다.</div>`;
+
+  $('#app').innerHTML = html;
+}
+
+loadData().then(d => {
+  if (!d) {
+    $('#app').innerHTML = '<div class="card" style="text-align:center;padding:40px"><h2>⚠️ 데이터 로드 실패</h2><p style="color:var(--muted);margin-top:8px">reports/latest.json을 확인해주세요.</p></div>';
+    return;
+  }
+  render(d);
+});
+</script>
+</body>
+</html>
