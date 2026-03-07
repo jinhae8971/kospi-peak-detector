@@ -2,8 +2,8 @@ name: 📈 코스피 고점 판독기
 
 on:
   schedule:
-    # 매일 오후 5시 KST = UTC 08:00
-    - cron: '0 8 * * *'
+    # 매주 일요일 오전 7시 KST = 토요일 UTC 22:00
+    - cron: '0 22 * * 6'
   workflow_dispatch:   # 수동 실행 허용
 
 permissions:
