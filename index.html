@@ -299,6 +299,57 @@ h1{font-size:1.6rem;margin-bottom:4px;font-weight:700}
   color:var(--tertiary);
   font-size:.9rem;
 }
+/* 데이터 출처 섹션 */
+.data-source-bar{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px 16px;
+  margin-top:14px;
+  padding:10px 14px;
+  background:rgba(0,0,0,.18);
+  border-radius:8px;
+  border:1px solid var(--border);
+  font-size:.78rem;
+  color:var(--tertiary);
+}
+.data-source-bar .ds-label{
+  font-weight:600;
+  color:var(--secondary);
+  white-space:nowrap;
+}
+.data-source-bar .ds-links{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px 12px;
+}
+.data-source-bar a.ds-link{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  color:var(--primary);
+  text-decoration:none;
+  font-weight:500;
+  padding:2px 8px;
+  border-radius:4px;
+  background:rgba(99,179,237,.08);
+  border:1px solid rgba(99,179,237,.2);
+  transition:background .15s, border-color .15s;
+}
+.data-source-bar a.ds-link:hover{
+  background:rgba(99,179,237,.18);
+  border-color:rgba(99,179,237,.45);
+  text-decoration:none;
+}
+.data-source-bar .ds-note{
+  margin-left:auto;
+  white-space:nowrap;
+  color:var(--tertiary);
+  font-size:.74rem;
+}
+@media(max-width:600px){
+  .data-source-bar .ds-note{margin-left:0;width:100%}
+}
 @media(max-width:600px){
   .earnings-insights{grid-template-columns:1fr}
 }
@@ -453,6 +504,34 @@ function render(d) {
   } else {
     html += `<div class="no-data-msg">📊 이익추정치 데이터가 아직 충분하지 않습니다.<br>워크플로우가 2회 이상 실행되면 차트가 표시됩니다.</div>`;
   }
+
+  // ── 데이터 출처 바 ──
+  const latestLabel = (et && et.labels && et.labels.length > 0)
+    ? et.labels[et.labels.length - 1] : null;
+  html += `<div class="data-source-bar">
+    <span class="ds-label">📌 데이터 출처</span>
+    <div class="ds-links">
+      <a class="ds-link" href="https://finance.yahoo.com/quote/005930.KS/financials/" target="_blank" rel="noopener">
+        📊 삼성전자 (005930.KS)
+      </a>
+      <a class="ds-link" href="https://finance.naver.com/item/main.naver?code=005930" target="_blank" rel="noopener">
+        🟢 네이버 증권
+      </a>
+      <a class="ds-link" href="https://finance.yahoo.com/quote/000660.KS/financials/" target="_blank" rel="noopener">
+        📊 SK하이닉스 (000660.KS)
+      </a>
+      <a class="ds-link" href="https://finance.naver.com/item/main.naver?code=000660" target="_blank" rel="noopener">
+        🟢 네이버 증권
+      </a>
+      <a class="ds-link" href="https://finance.yahoo.com/quote/MU/financials/" target="_blank" rel="noopener">
+        📊 마이크론 (MU)
+      </a>
+    </div>
+    <span class="ds-note">
+      수집: Yahoo Finance API (yfinance) · Forward EPS 기준${latestLabel ? ' · 최근 데이터: ' + latestLabel : ''}
+    </span>
+  </div>`;
+
   html += `</div>`;
 
   // Warnings Card
