@@ -1273,14 +1273,22 @@
   },
   {
     "date": "2026-03-14",
-    "samsung_forward_eps": 28256.63,
+    "samsung_forward_eps": 23656.0,
+    "samsung_consensus_year": "2026.12.",
     "samsung_trailing_eps": null,
     "samsung_price": 183500.0,
-    "hynix_forward_eps": 210232.0,
+    "samsung_source": "naver_consensus",
+    "samsung_source_url": "https://finance.naver.com/item/coinfo.naver?code=005930&param=etc",
+    "hynix_forward_eps": 180200.0,
+    "hynix_consensus_year": "2026.12.",
     "hynix_trailing_eps": null,
     "hynix_price": 910000.0,
+    "hynix_source": "naver_consensus",
+    "hynix_source_url": "https://finance.naver.com/item/coinfo.naver?code=000660&param=etc",
+    "micron_source": "yahoo_finance",
     "micron_forward_eps": 49.84,
     "micron_trailing_eps": 10.54,
-    "micron_price": 426.13
+    "micron_price": 426.13,
+    "micron_source_url": "https://finance.yahoo.com/quote/MU/financials/"
   }
 ]

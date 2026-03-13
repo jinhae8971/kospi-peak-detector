@@ -658,9 +658,49 @@ def analyze_technical():
 
 EARNINGS_HISTORY_PATH = 'reports/earnings_history.json'
 
+def fetch_naver_consensus_eps(code):
+    """네이버 증권 컨센서스 연간 EPS 추출.
+    가장 가까운 미래 컨센서스 연도의 EPS를 반환.
+    Returns: (eps: float|None, consensus_year: str|None, source_url: str)
+    """
+    import requests as _req
+    url = f'https://m.stock.naver.com/api/stock/{code}/finance/annual'
+    source_url = f'https://finance.naver.com/item/coinfo.naver?code={code}&param=etc&cmp_cd={code}'
+    hdrs = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://finance.naver.com',
+    }
+    r = _req.get(url, headers=hdrs, timeout=10)
+    r.raise_for_status()
+    fi = r.json()['financeInfo']
+
+    # 컨센서스 연도 키 추출 (isConsensus == 'Y' 중 가장 가까운 연도)
+    consensus_keys = sorted(
+        tr['key'] for tr in fi['trTitleList'] if tr['isConsensus'] == 'Y'
+    )
+    if not consensus_keys:
+        return None, None, source_url
+
+    target_key = consensus_keys[0]
+    target_title = next(
+        tr['title'] for tr in fi['trTitleList'] if tr['key'] == target_key
+    )
+
+    for row in fi['rowList']:
+        if row['title'] == 'EPS':
+            val_str = row['columns'].get(target_key, {}).get('value', '')
+            if val_str and val_str not in ('-', ''):
+                eps = float(val_str.replace(',', ''))
+                return eps, target_title, source_url
+
+    return None, None, source_url
+
+
 def collect_earnings_estimates():
-    """삼성전자·SK하이닉스·마이크론의 Forward EPS를 수집하여 시계열로 누적 저장."""
-    print('\n━━━ [5] 이익추정치 트렌드 수집 ━━━')
+    """삼성전자·SK하이닉스(네이버 컨센서스)·마이크론(Yahoo Finance)의 Forward EPS 수집."""
+    print('\n━━━ [5] 이익추정치 트렌드 수집 (v2.4) ━━━')
+    print('  삼성전자·SK하이닉스: 네이버 증권 컨센서스 EPS')
+    print('  마이크론: Yahoo Finance forwardEps')
 
     today = datetime.now(KST).strftime('%Y-%m-%d')
 
@@ -679,41 +719,69 @@ def collect_earnings_estimates():
         print(f'  오늘({today}) 데이터가 이미 존재 — 수집 스킵')
         return history
 
-    # Forward EPS 수집
-    targets = {
-        'samsung': {'symbol': '005930.KS', 'name': '삼성전자'},
-        'hynix':   {'symbol': '000660.KS', 'name': 'SK하이닉스'},
-        'micron':  {'symbol': 'MU',        'name': '마이크론'},
-    }
-
     entry = {'date': today}
-    for key, cfg in targets.items():
-        try:
-            t = yf.Ticker(cfg['symbol'])
-            info = t.info or {}
-            forward_eps = info.get('forwardEps')
-            trailing_eps = info.get('trailingEps')
-            forward_pe = info.get('forwardPE')
-            price = info.get('currentPrice') or info.get('regularMarketPrice')
 
-            # Forward EPS가 없으면 price / forwardPE로 역산
-            if forward_eps is None and forward_pe and price:
-                forward_eps = price / forward_pe
+    # ── 삼성전자: 네이버 컨센서스 ──
+    try:
+        eps, yr, src_url = fetch_naver_consensus_eps('005930')
+        price_info = yf.Ticker('005930.KS').info or {}
+        price = price_info.get('currentPrice') or price_info.get('regularMarketPrice')
+        entry['samsung_forward_eps']      = round(eps, 2) if eps else None
+        entry['samsung_consensus_year']   = yr
+        entry['samsung_trailing_eps']     = None
+        entry['samsung_price']            = round(price, 2) if price else None
+        entry['samsung_source']           = 'naver_consensus'
+        entry['samsung_source_url']       = src_url
+        print(f'  삼성전자: Forward EPS={eps:,.0f}원 ({yr} 컨센서스) [네이버]')
+    except Exception as e:
+        print(f'  [삼성전자 오류] {e}')
+        entry['samsung_forward_eps'] = None
+        entry['samsung_source']      = 'error'
 
-            entry[f'{key}_forward_eps'] = round(forward_eps, 2) if forward_eps else None
-            entry[f'{key}_trailing_eps'] = round(trailing_eps, 2) if trailing_eps else None
-            entry[f'{key}_price'] = round(price, 2) if price else None
+    # ── SK하이닉스: 네이버 컨센서스 ──
+    try:
+        eps, yr, src_url = fetch_naver_consensus_eps('000660')
+        price_info = yf.Ticker('000660.KS').info or {}
+        price = price_info.get('currentPrice') or price_info.get('regularMarketPrice')
+        entry['hynix_forward_eps']      = round(eps, 2) if eps else None
+        entry['hynix_consensus_year']   = yr
+        entry['hynix_trailing_eps']     = None
+        entry['hynix_price']            = round(price, 2) if price else None
+        entry['hynix_source']           = 'naver_consensus'
+        entry['hynix_source_url']       = src_url
+        print(f'  SK하이닉스: Forward EPS={eps:,.0f}원 ({yr} 컨센서스) [네이버]')
+    except Exception as e:
+        print(f'  [SK하이닉스 오류] {e}')
+        entry['hynix_forward_eps'] = None
+        entry['hynix_source']      = 'error'
 
-            print(f'  {cfg["name"]}: Forward EPS={forward_eps}, Trailing EPS={trailing_eps}, Price={price}')
-        except Exception as e:
-            print(f'  [{cfg["name"]} 오류] {e}')
-            entry[f'{key}_forward_eps'] = None
-            entry[f'{key}_trailing_eps'] = None
-            entry[f'{key}_price'] = None
+    # ── 마이크론: Yahoo Finance (신뢰 가능) ──
+    try:
+        t = yf.Ticker('MU')
+        info = t.info or {}
+        forward_eps  = info.get('forwardEps')
+        trailing_eps = info.get('trailingEps')
+        forward_pe   = info.get('forwardPE')
+        price        = info.get('currentPrice') or info.get('regularMarketPrice')
+        # forwardEps 없을 때만 역산 (MU는 거의 항상 있음)
+        if forward_eps is None and forward_pe and price:
+            forward_eps = price / forward_pe
+            entry['micron_source'] = 'yahoo_proxy'
+        else:
+            entry['micron_source'] = 'yahoo_finance'
+        entry['micron_forward_eps']  = round(forward_eps, 2) if forward_eps else None
+        entry['micron_trailing_eps'] = round(trailing_eps, 2) if trailing_eps else None
+        entry['micron_price']        = round(price, 2) if price else None
+        entry['micron_source_url']   = 'https://finance.yahoo.com/quote/MU/financials/'
+        print(f'  마이크론: Forward EPS={forward_eps} [Yahoo Finance]')
+    except Exception as e:
+        print(f'  [마이크론 오류] {e}')
+        entry['micron_forward_eps'] = None
+        entry['micron_source']      = 'error'
 
     history.append(entry)
 
-    # 최대 365일 히스토리 유지
+    # 최대 365개 히스토리 유지
     if len(history) > 365:
         history = history[-365:]
 
@@ -722,7 +790,7 @@ def collect_earnings_estimates():
     with open(EARNINGS_HISTORY_PATH, 'w', encoding='utf-8') as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
-    print(f'  → {len(history)}일 분의 히스토리 저장 완료')
+    print(f'  → {len(history)}개 데이터포인트 저장 완료')
     return history
 
 
@@ -766,11 +834,23 @@ def build_earnings_trend(history):
             else:
                 trend[key].append(None)
 
-    # 최신 EPS 값
+    # 최신 EPS 값 + 출처 정보
     latest = history[-1]
     trend['samsung_latest_eps'] = latest.get('samsung_forward_eps')
     trend['hynix_latest_eps']   = latest.get('hynix_forward_eps')
     trend['micron_latest_eps']  = latest.get('micron_forward_eps')
+    # 대시보드 출처 표시용: 최신 entry 전체 전달
+    trend['latest_entry'] = {
+        'date':                   latest.get('date'),
+        'samsung_source':         latest.get('samsung_source', 'yahoo_proxy'),
+        'samsung_source_url':     latest.get('samsung_source_url', ''),
+        'samsung_consensus_year': latest.get('samsung_consensus_year', ''),
+        'hynix_source':           latest.get('hynix_source', 'yahoo_proxy'),
+        'hynix_source_url':       latest.get('hynix_source_url', ''),
+        'hynix_consensus_year':   latest.get('hynix_consensus_year', ''),
+        'micron_source':          latest.get('micron_source', 'yahoo_finance'),
+        'micron_source_url':      latest.get('micron_source_url', 'https://finance.yahoo.com/quote/MU/financials/'),
+    }
 
     # ── 피크 감지 + 인사이트 생성 ──
     insights = []
