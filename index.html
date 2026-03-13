@@ -228,36 +228,79 @@ h1{font-size:1.6rem;margin-bottom:4px;font-weight:700}
   margin-top:20px;
 }
 
+.earnings-card{
+  border:2px solid var(--primary);
+  box-shadow:0 2px 8px rgba(37,99,235,.12);
+}
+.earnings-card h2{
+  background:linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%);
+  color:#fff;
+  border-bottom:none;
+}
+.earnings-card h2::before{
+  background:rgba(255,255,255,.25);
+  color:#fff;
+}
 .earnings-chart-wrap{
   position:relative;
   width:100%;
-  height:320px;
-  padding:16px 20px;
+  height:340px;
+  padding:16px 20px 8px;
 }
+.earnings-summary{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:0 20px 12px;
+  font-size:.82rem;
+  color:var(--secondary);
+}
+.earnings-summary .base-info{flex:1}
 .earnings-insights{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  grid-template-columns:repeat(3,1fr);
   gap:10px;
   padding:0 20px 20px;
 }
 .insight-pill{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  padding:10px 14px;
+  padding:12px 14px;
   background:#fafbfc;
   border:1px solid var(--border);
-  border-radius:6px;
+  border-radius:8px;
   font-size:.82rem;
+  transition:border-color .2s;
 }
-.insight-pill .company{font-weight:600;color:var(--text)}
-.insight-pill .direction{font-weight:700;font-size:.9rem}
-.insight-pill .momentum{font-size:.75rem;color:var(--secondary);margin-top:2px}
+.insight-pill.peaked{
+  background:var(--red-bg);
+  border-color:var(--red);
+}
+.insight-pill.rising{
+  background:var(--green-bg);
+  border-color:var(--green);
+}
+.insight-pill .company{font-weight:700;color:var(--text);font-size:.9rem;margin-bottom:4px}
+.insight-pill .direction{font-weight:700;font-size:1rem}
+.insight-pill .sub-info{font-size:.75rem;color:var(--secondary);margin-top:3px}
+.insight-pill .peak-warn{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  margin-top:6px;
+  padding:3px 8px;
+  background:var(--red);
+  color:#fff;
+  border-radius:4px;
+  font-size:.72rem;
+  font-weight:600;
+}
 .no-data-msg{
   text-align:center;
   padding:40px 20px;
   color:var(--tertiary);
   font-size:.9rem;
+}
+@media(max-width:600px){
+  .earnings-insights{grid-template-columns:1fr}
 }
 
 .loading{text-align:center;padding:60px;color:var(--secondary)}
@@ -295,7 +338,7 @@ h1{font-size:1.6rem;margin-bottom:4px;font-weight:700}
 <body>
 <a class="back-link" href="https://jinhae8971.github.io/github-actions-dashboard/">← 대시보드로 돌아가기</a>
 <h1>📈 코스피 중장기 고점 판독기</h1>
-<p class="subtitle">4대 프레임워크 기반 자동 분석 · 매일 17:00 KST 업데이트</p>
+<p class="subtitle">5대 프레임워크 기반 자동 분석 · 매일 17:00 KST 업데이트</p>
 
 <div id="app">
   <div class="loading"><div class="spinner"></div><p style="margin-top:12px">분석 데이터 로딩 중...</p></div>
@@ -376,6 +419,41 @@ function render(d) {
     <div class="chip">USD/KRW ${fmtInt(sd.usdkrw)}</div>
     <div class="chip">VIX ${fmt(sd.vix)}</div>
   </div>`;
+
+  // ★ Earnings Trend Chart — 최상단 핵심 섹션
+  const et = data.earnings_trend;
+  html += `<div class="card earnings-card" style="margin-bottom:16px">
+    <h2 data-index="★">이익추정치 트렌드 — 고점 판독 핵심 지표</h2>`;
+
+  if (et && et.labels && et.labels.length >= 2) {
+    html += `<div class="earnings-summary">
+      <span class="base-info">📅 기준일: ${et.base_date} · 데이터: ${et.labels.length}주</span>
+    </div>`;
+    html += `<div class="earnings-chart-wrap"><canvas id="earningsChart"></canvas></div>`;
+    if (et.insights && et.insights.length > 0) {
+      html += `<div class="earnings-insights">`;
+      et.insights.forEach(ins => {
+        const isPeaked = ins.peaked === true;
+        const arrow = ins.direction === '상향' ? '📈' : ins.direction === '하향' ? '📉' : '➡️';
+        const dirColor = ins.direction === '상향' ? 'var(--green)' : ins.direction === '하향' ? 'var(--red)' : 'var(--secondary)';
+        const pillClass = isPeaked ? 'peaked' : (ins.change_from_base > 0 ? 'rising' : '');
+        const momText = ins.recent_momentum != null
+          ? `모멘텀: ${ins.recent_momentum > 0 ? '+' : ''}${ins.recent_momentum}%p`
+          : '';
+        html += `<div class="insight-pill ${pillClass}">
+          <div class="company">${ins.company}</div>
+          <div class="direction" style="color:${dirColor}">${arrow} ${pct(ins.change_from_base)}</div>
+          ${ins.latest_eps != null ? `<div class="sub-info">Forward EPS: ${fmt(ins.latest_eps,2)}</div>` : ''}
+          ${momText ? `<div class="sub-info">${momText}</div>` : ''}
+          ${isPeaked ? `<div class="peak-warn">⚠️ 피크 대비 ${ins.decline_from_peak != null ? ins.decline_from_peak.toFixed(1) + '%p' : ''} 하락 — 추정치 꺾임</div>` : ''}
+        </div>`;
+      });
+      html += `</div>`;
+    }
+  } else {
+    html += `<div class="no-data-msg">📊 이익추정치 데이터가 아직 충분하지 않습니다.<br>워크플로우가 2회 이상 실행되면 차트가 표시됩니다.</div>`;
+  }
+  html += `</div>`;
 
   // Warnings Card
   html += `<div class="card" style="margin-bottom:16px">
@@ -507,38 +585,6 @@ function render(d) {
   </div>`;
 
   html += '</div>'; // grid-2
-
-  // 5. Earnings Trend Chart (full-width)
-  const et = data.earnings_trend;
-  html += `<div class="card" style="margin-bottom:16px">
-    <h2 data-index="⑤">이익추정치 트렌드 (Forward EPS 변화율)</h2>`;
-
-  if (et && et.labels && et.labels.length >= 2) {
-    html += `<div class="earnings-chart-wrap"><canvas id="earningsChart"></canvas></div>`;
-    // Insights pills
-    if (et.insights && et.insights.length > 0) {
-      html += `<div class="earnings-insights">`;
-      et.insights.forEach(ins => {
-        const arrow = ins.direction === '상향' ? '📈' : ins.direction === '하향' ? '📉' : '➡️';
-        const dirColor = ins.direction === '상향' ? 'var(--green)' : ins.direction === '하향' ? 'var(--red)' : 'var(--secondary)';
-        const momText = ins.recent_momentum != null
-          ? `최근 모멘텀: ${ins.recent_momentum > 0 ? '+' : ''}${ins.recent_momentum}%p`
-          : '';
-        html += `<div class="insight-pill">
-          <div>
-            <div class="company">${ins.company}</div>
-            <div class="direction" style="color:${dirColor}">${arrow} ${ins.direction} ${pct(ins.change_from_base)}</div>
-            ${ins.latest_eps != null ? `<div class="momentum">F.EPS: ${fmt(ins.latest_eps,2)}</div>` : ''}
-            ${momText ? `<div class="momentum">${momText}</div>` : ''}
-          </div>
-        </div>`;
-      });
-      html += `</div>`;
-    }
-  } else {
-    html += `<div class="no-data-msg">📊 이익추정치 데이터가 아직 충분하지 않습니다.<br>워크플로우가 2회 이상 실행되면 차트가 표시됩니다.</div>`;
-  }
-  html += `</div>`;
 
   // Timestamp
   html += `<div class="ts">마지막 업데이트: ${tsStr} · ⚠️ 본 리포트는 AI 기반 자동 분석으로, 투자 권유가 아닙니다.</div>`;

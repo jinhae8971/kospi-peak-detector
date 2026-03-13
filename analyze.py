@@ -1,7 +1,7 @@
 """
-analyze.py — 코스피 중장기 고점 판독기 v2.2
+analyze.py — 코스피 중장기 고점 판독기 v2.3
 =============================================
-4대 핵심 프레임워크 기반 전문 수준 자동 분석:
+5대 핵심 프레임워크 기반 전문 수준 자동 분석:
   1. 밸류에이션 & 과열 지표 (Valuation & Overheat)
      - 버핏 지수 (GDP 대비 시가총액 비율)
      - 12개월 선행 PER / PBR (yfinance 기반)
@@ -727,7 +727,13 @@ def collect_earnings_estimates():
 
 
 def build_earnings_trend(history):
-    """히스토리 데이터를 기준일 대비 변화율 시계열로 변환 (대시보드 차트용)."""
+    """히스토리 데이터를 기준일 대비 변화율 시계열로 변환 (대시보드 차트용).
+
+    피크 감지 로직 포함:
+      - 각 종목의 변화율 시계열에서 최고점(피크) 식별
+      - 현재 값이 피크 대비 하락 시 '추정치 꺾임' 판정
+      - 삼성/하이닉스 동시 꺾임 = 고점 판독 최강 경고 신호
+    """
     if not history or len(history) < 2:
         return None
 
@@ -766,25 +772,72 @@ def build_earnings_trend(history):
     trend['hynix_latest_eps']   = latest.get('hynix_forward_eps')
     trend['micron_latest_eps']  = latest.get('micron_forward_eps')
 
-    # 인사이트 생성
+    # ── 피크 감지 + 인사이트 생성 ──
     insights = []
-    for key, name in [('samsung', '삼성전자'), ('hynix', 'SK하이닉스'), ('micron', '마이크론')]:
+    earnings_warnings = []      # 추정치 꺾임 경고 (main에서 risk_level에 반영)
+    peaked_count = 0            # 피크 이후 하락 중인 종목 수
+    peaked_korean_count = 0     # 한국 종목(삼성+하이닉스) 중 피크 하락 수
+
+    for key, name, is_korean in [
+        ('samsung', '삼성전자', True),
+        ('hynix', 'SK하이닉스', True),
+        ('micron', '마이크론', False),
+    ]:
         vals = [v for v in trend[key] if v is not None]
-        if len(vals) >= 2:
-            latest_chg = vals[-1]
-            direction = '상향' if latest_chg > 0 else '하향' if latest_chg < 0 else '보합'
-            insights.append({
-                'company': name,
-                'change_from_base': latest_chg,
-                'direction': direction,
-                'latest_eps': trend[f'{key}_latest_eps'],
-            })
-            # 최근 5일 모멘텀
-            if len(vals) >= 5:
-                recent_momentum = vals[-1] - vals[-5]
-                insights[-1]['recent_momentum'] = round(recent_momentum, 1)
+        if len(vals) < 2:
+            continue
+
+        latest_chg = vals[-1]
+        peak_val = max(vals)
+        peak_idx = vals.index(peak_val)
+        direction = '상향' if latest_chg > 0 else '하향' if latest_chg < 0 else '보합'
+
+        # 피크 감지: 현재가 피크보다 낮고, 피크가 최근이 아닌 경우
+        is_peaked = False
+        decline_from_peak = None
+        if peak_val > 0 and len(vals) - peak_idx > 2:
+            # 피크 이후 3개 이상 데이터포인트에서 하락 지속 = 꺾임 확정
+            decline_from_peak = round(latest_chg - peak_val, 1)
+            if decline_from_peak < -3:  # 3%p 이상 하락해야 의미있는 꺾임
+                is_peaked = True
+                peaked_count += 1
+                if is_korean:
+                    peaked_korean_count += 1
+
+        insight = {
+            'company': name,
+            'change_from_base': latest_chg,
+            'direction': direction,
+            'latest_eps': trend[f'{key}_latest_eps'],
+            'peaked': is_peaked,
+            'decline_from_peak': decline_from_peak,
+            'peak_value': peak_val,
+        }
+
+        # 최근 4주 모멘텀
+        if len(vals) >= 5:
+            recent_momentum = vals[-1] - vals[-5]
+            insight['recent_momentum'] = round(recent_momentum, 1)
+
+        insights.append(insight)
+
+        # 경고 생성
+        if is_peaked and decline_from_peak is not None:
+            severity = '🔴' if abs(decline_from_peak) >= 10 else '⚠️'
+            earnings_warnings.append(
+                f'{severity} {name} 이익추정치 피크 대비 {decline_from_peak:+.1f}%p 하락 — 추정치 꺾임 감지'
+            )
+
+    # 삼성+하이닉스 동시 꺾임 = 최강 경고
+    if peaked_korean_count >= 2:
+        earnings_warnings.insert(0,
+            '🔴 삼성전자·SK하이닉스 이익추정치 동시 꺾임 — 반도체 실적 사이클 하락 전환 강력 경고'
+        )
 
     trend['insights'] = insights
+    trend['earnings_warnings'] = earnings_warnings
+    trend['peaked_count'] = peaked_count
+    trend['peaked_korean_count'] = peaked_korean_count
     return trend
 
 
@@ -851,7 +904,7 @@ def generate_ai_verdict(valuation, semiconductor, supply_demand, technical):
     ma_align      = '정배열 ✅' if technical.get('ma_perfect_align') else '비정배열 ❌'
 
     summary_data = f"""
-=== 코스피 중장기 고점 판독기 v2.1 — 실시간 데이터 ({datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')}) ===
+=== 코스피 중장기 고점 판독기 v2.3 — 실시간 데이터 ({datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')}) ===
 
 [1. 밸류에이션 & 과열 지표]
 - 코스피 현재가: {kospi_price:,}pt (52주 고점 대비: {pct_52w_high}%)
@@ -892,6 +945,13 @@ def generate_ai_verdict(valuation, semiconductor, supply_demand, technical):
 - 엘리어트 파동 위치: {elliott_pos}
 - 파동 분석: {elliott_desc}
 - 경고 신호: {'; '.join(technical.get('warnings', ['없음']))}
+
+[★ 5. 이익추정치 트렌드 — 고점 판독 최우선 지표]
+- 삼성전자 이익추정치 꺾임 여부: 경고 시스템에서 자동 감지
+- SK하이닉스 이익추정치 꺾임 여부: 경고 시스템에서 자동 감지
+- 마이크론 이익추정치 꺾임 여부: 경고 시스템에서 자동 감지
+- 핵심 논리: "이익추정치가 피크에서 꺾이기 시작하는 시점이 주가 고점에 3~6개월 선행"
+  삼성+하이닉스 동시 꺾임 = 반도체 실적 사이클 하락 전환, 코스피 고점 형성 최강 신호
 
 [종합 경고 집계]
 - 🔴 위험 신호: {danger_count}건 / ⚠️ 주의 신호: {caution_count}건 / ⚡ 경계 신호: {watch_count}건
@@ -1069,8 +1129,10 @@ def generate_ai_verdict(valuation, semiconductor, supply_demand, technical):
 당신은 삼성디스플레이 AI팀 임원에게 브리핑하는 한국 주식시장 전문 퀀트 애널리스트입니다.
 위 실시간 데이터를 바탕으로 코스피 중장기 고점 위험도를 전문적으로 판단하는 HTML 리포트를 작성하세요.
 
-핵심 분석 논리:
-"단순한 지수 하락보다는 반도체 이익 전망치의 훼손(Fundamental)과 이격도 과다에 따른 기술적 부담(Technical)이 결합되는 시점을 중장기 변곡점으로 본다."
+핵심 분석 논리 (최우선):
+"이익추정치(Forward EPS)가 피크에서 꺾이기 시작하는 시점이 주가 고점에 3~6개월 선행한다.
+삼성전자·SK하이닉스의 이익 컨센서스 동시 하향 전환은 코스피 중장기 고점의 가장 강력한 선행 신호다.
+이격도 과다 + 추정치 꺾임이 결합되면, 중장기 변곡점이 임박했다는 판단의 확실도가 가장 높다."
 
 아래에 전체 지표 체크리스트가 이미 생성되어 있습니다 (🟢 정상 포함):
 {checklist_block}
@@ -1081,7 +1143,8 @@ def generate_ai_verdict(valuation, semiconductor, supply_demand, technical):
 <b>위험도: [🟢 정상 / 🟡 주의 / 🟠 경계 / 🔴 위험 중 하나 — 반드시 실제 데이터 기반으로 선택]</b><br>
 [위험도 판단 근거를 2~3문장으로, 구체적 수치 인용 필수]<br>
 <hr>
-<b>📊 4대 프레임워크 스코어카드</b><br>
+<b>📊 5대 프레임워크 스코어카드</b><br>
+★ 이익추정치 트렌드: [1~5점] — [추정치 꺾임 여부, 피크 대비 변화, 핵심 판단 한 줄] ← 최우선 지표<br>
 밸류에이션: [1~5점] — [핵심 수치 인용하여 한 줄 요약]<br>
 반도체 업황: [1~5점] — [핵심 수치 인용하여 한 줄 요약]<br>
 수급/심리: [1~5점] — [핵심 수치 인용하여 한 줄 요약]<br>
@@ -1151,7 +1214,7 @@ RSI(14): {rsi} | 볼린저밴드 %B: {bb_pct}% | 20일 실현변동성: {rv_20}%
 def main():
     ts = datetime.now(KST)
     print(f'{"="*60}')
-    print(f'  코스피 중장기 고점 판독기 v2.2')
+    print(f'  코스피 중장기 고점 판독기 v2.3')
     print(f'  실행 시각: {ts.strftime("%Y-%m-%dT%H:%M:%S KST")}')
     print(f'{"="*60}')
 
@@ -1172,10 +1235,35 @@ def main():
         valuation, semiconductor, supply_demand, technical
     )
 
-    danger_count = sum(1 for w in all_warnings if w.startswith('🔴'))
-    if danger_count >= 3 or total_warnings >= 7:
+    # ── 이익추정치 경고를 warnings에 합산 (최상위 배치) ──
+    earnings_warnings = []
+    if earnings_trend and earnings_trend.get('earnings_warnings'):
+        earnings_warnings = earnings_trend['earnings_warnings']
+        all_warnings = earnings_warnings + all_warnings
+        total_warnings = len(all_warnings)
+
+    # ── 위험도 판정: 이익추정치 꺾임 = 최우선 가중치 ──
+    peaked_korean = earnings_trend.get('peaked_korean_count', 0) if earnings_trend else 0
+    peaked_total  = earnings_trend.get('peaked_count', 0) if earnings_trend else 0
+    danger_count  = sum(1 for w in all_warnings if w.startswith('🔴'))
+
+    # 판정 로직 (추정치 꺾임이 가장 강력한 신호)
+    if peaked_korean >= 2:
+        # 삼성+하이닉스 동시 꺾임 = 무조건 DANGER
         risk_level = 'DANGER'
         risk_emoji = '🔴'
+    elif peaked_korean >= 1 and danger_count >= 2:
+        # 한국 종목 1개 꺾임 + 다른 위험 신호 2개 이상 = DANGER
+        risk_level = 'DANGER'
+        risk_emoji = '🔴'
+    elif peaked_total >= 2 or danger_count >= 3 or total_warnings >= 7:
+        # 글로벌 2개 이상 꺾임 OR 기존 위험 기준
+        risk_level = 'DANGER'
+        risk_emoji = '🔴'
+    elif peaked_korean >= 1 or (danger_count >= 1 and total_warnings >= 4):
+        # 한국 종목 1개 꺾임 = CAUTION (기존보다 격상)
+        risk_level = 'CAUTION'
+        risk_emoji = '🟠'
     elif danger_count >= 1 or total_warnings >= 4:
         risk_level = 'CAUTION'
         risk_emoji = '🟠'
@@ -1208,7 +1296,7 @@ def main():
         json.dump(report, f, ensure_ascii=False, indent=2)
 
     print(f'\n{"="*60}')
-    print(f'✅ 분석 완료 — 코스피 중장기 고점 판독기 v2.2')
+    print(f'✅ 분석 완료 — 코스피 중장기 고점 판독기 v2.3')
     print(f'   위험도: {risk_emoji} {risk_level} ({pre_risk})')
     print(f'   경고 신호: {total_warnings}건 (🔴 위험 {danger_count}건)')
     print(f'   → reports/latest.json 저장 완료')
