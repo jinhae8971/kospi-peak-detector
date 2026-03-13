@@ -1,5 +1,5 @@
 """
-analyze.py — 코스피 중장기 고점 판독기 v2.1
+analyze.py — 코스피 중장기 고점 판독기 v2.2
 =============================================
 4대 핵심 프레임워크 기반 전문 수준 자동 분석:
   1. 밸류에이션 & 과열 지표 (Valuation & Overheat)
@@ -20,8 +20,11 @@ analyze.py — 코스피 중장기 고점 판독기 v2.1
      - 이동평균선 배열 (5/20/60/120/200일)
      - 엘리어트 파동 위치 추정
      - 12개월 이격도 (핵심 고점 판별 지표)
+  5. 이익추정치 트렌드 (Earnings Estimates Trend)
+     - 삼성전자 / SK하이닉스 / 마이크론 Forward EPS 시계열 추적
+     - 기준일 대비 변화율 시각화 (대시보드 차트 연동)
 
-출력: reports/latest.json (대시보드 연동)
+출력: reports/latest.json, reports/earnings_history.json (대시보드 연동)
 """
 
 import os
@@ -650,6 +653,142 @@ def analyze_technical():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 프레임워크 5: 이익추정치 트렌드 (Forward EPS 시계열)
+# ─────────────────────────────────────────────────────────────────────────────
+
+EARNINGS_HISTORY_PATH = 'reports/earnings_history.json'
+
+def collect_earnings_estimates():
+    """삼성전자·SK하이닉스·마이크론의 Forward EPS를 수집하여 시계열로 누적 저장."""
+    print('\n━━━ [5] 이익추정치 트렌드 수집 ━━━')
+
+    today = datetime.now(KST).strftime('%Y-%m-%d')
+
+    # 기존 히스토리 로드
+    history = []
+    if os.path.exists(EARNINGS_HISTORY_PATH):
+        try:
+            with open(EARNINGS_HISTORY_PATH, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+        except Exception:
+            history = []
+
+    # 오늘 날짜 데이터가 이미 있으면 스킵 (중복 방지)
+    existing_dates = {entry['date'] for entry in history}
+    if today in existing_dates:
+        print(f'  오늘({today}) 데이터가 이미 존재 — 수집 스킵')
+        return history
+
+    # Forward EPS 수집
+    targets = {
+        'samsung': {'symbol': '005930.KS', 'name': '삼성전자'},
+        'hynix':   {'symbol': '000660.KS', 'name': 'SK하이닉스'},
+        'micron':  {'symbol': 'MU',        'name': '마이크론'},
+    }
+
+    entry = {'date': today}
+    for key, cfg in targets.items():
+        try:
+            t = yf.Ticker(cfg['symbol'])
+            info = t.info or {}
+            forward_eps = info.get('forwardEps')
+            trailing_eps = info.get('trailingEps')
+            forward_pe = info.get('forwardPE')
+            price = info.get('currentPrice') or info.get('regularMarketPrice')
+
+            # Forward EPS가 없으면 price / forwardPE로 역산
+            if forward_eps is None and forward_pe and price:
+                forward_eps = price / forward_pe
+
+            entry[f'{key}_forward_eps'] = round(forward_eps, 2) if forward_eps else None
+            entry[f'{key}_trailing_eps'] = round(trailing_eps, 2) if trailing_eps else None
+            entry[f'{key}_price'] = round(price, 2) if price else None
+
+            print(f'  {cfg["name"]}: Forward EPS={forward_eps}, Trailing EPS={trailing_eps}, Price={price}')
+        except Exception as e:
+            print(f'  [{cfg["name"]} 오류] {e}')
+            entry[f'{key}_forward_eps'] = None
+            entry[f'{key}_trailing_eps'] = None
+            entry[f'{key}_price'] = None
+
+    history.append(entry)
+
+    # 최대 365일 히스토리 유지
+    if len(history) > 365:
+        history = history[-365:]
+
+    # 저장
+    os.makedirs('reports', exist_ok=True)
+    with open(EARNINGS_HISTORY_PATH, 'w', encoding='utf-8') as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+    print(f'  → {len(history)}일 분의 히스토리 저장 완료')
+    return history
+
+
+def build_earnings_trend(history):
+    """히스토리 데이터를 기준일 대비 변화율 시계열로 변환 (대시보드 차트용)."""
+    if not history or len(history) < 2:
+        return None
+
+    # 기준일: 히스토리의 첫번째 유효 데이터
+    base = history[0]
+    base_samsung = base.get('samsung_forward_eps')
+    base_hynix   = base.get('hynix_forward_eps')
+    base_micron  = base.get('micron_forward_eps')
+
+    trend = {
+        'base_date': base['date'],
+        'labels': [],
+        'samsung': [],
+        'hynix': [],
+        'micron': [],
+        'samsung_latest_eps': None,
+        'hynix_latest_eps': None,
+        'micron_latest_eps': None,
+    }
+
+    for entry in history:
+        trend['labels'].append(entry['date'])
+
+        # 변화율 계산: (현재 - 기준) / |기준| * 100
+        for key, base_val in [('samsung', base_samsung), ('hynix', base_hynix), ('micron', base_micron)]:
+            eps = entry.get(f'{key}_forward_eps')
+            if eps is not None and base_val is not None and base_val != 0:
+                change_pct = (eps - base_val) / abs(base_val) * 100
+                trend[key].append(round(change_pct, 1))
+            else:
+                trend[key].append(None)
+
+    # 최신 EPS 값
+    latest = history[-1]
+    trend['samsung_latest_eps'] = latest.get('samsung_forward_eps')
+    trend['hynix_latest_eps']   = latest.get('hynix_forward_eps')
+    trend['micron_latest_eps']  = latest.get('micron_forward_eps')
+
+    # 인사이트 생성
+    insights = []
+    for key, name in [('samsung', '삼성전자'), ('hynix', 'SK하이닉스'), ('micron', '마이크론')]:
+        vals = [v for v in trend[key] if v is not None]
+        if len(vals) >= 2:
+            latest_chg = vals[-1]
+            direction = '상향' if latest_chg > 0 else '하향' if latest_chg < 0 else '보합'
+            insights.append({
+                'company': name,
+                'change_from_base': latest_chg,
+                'direction': direction,
+                'latest_eps': trend[f'{key}_latest_eps'],
+            })
+            # 최근 5일 모멘텀
+            if len(vals) >= 5:
+                recent_momentum = vals[-1] - vals[-5]
+                insights[-1]['recent_momentum'] = round(recent_momentum, 1)
+
+    trend['insights'] = insights
+    return trend
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # AI 종합 판단 (GPT-4.1 기반 전문 리포트 생성)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1012,7 +1151,7 @@ RSI(14): {rsi} | 볼린저밴드 %B: {bb_pct}% | 20일 실현변동성: {rv_20}%
 def main():
     ts = datetime.now(KST)
     print(f'{"="*60}')
-    print(f'  코스피 중장기 고점 판독기 v2.1')
+    print(f'  코스피 중장기 고점 판독기 v2.2')
     print(f'  실행 시각: {ts.strftime("%Y-%m-%dT%H:%M:%S KST")}')
     print(f'{"="*60}')
 
@@ -1023,6 +1162,11 @@ def main():
     supply_demand = analyze_supply_demand()
     time.sleep(1)
     technical     = analyze_technical()
+    time.sleep(1)
+
+    # ── Framework 5: 이익추정치 트렌드 ──
+    earnings_history = collect_earnings_estimates()
+    earnings_trend   = build_earnings_trend(earnings_history)
 
     ai_content, total_warnings, all_warnings, pre_risk = generate_ai_verdict(
         valuation, semiconductor, supply_demand, technical
@@ -1055,6 +1199,7 @@ def main():
             'semiconductor': semiconductor,
             'supply_demand': supply_demand,
             'technical':     technical,
+            'earnings_trend': earnings_trend,
         },
         'content': ai_content,
     }
@@ -1063,7 +1208,7 @@ def main():
         json.dump(report, f, ensure_ascii=False, indent=2)
 
     print(f'\n{"="*60}')
-    print(f'✅ 분석 완료 — 코스피 중장기 고점 판독기 v2.1')
+    print(f'✅ 분석 완료 — 코스피 중장기 고점 판독기 v2.2')
     print(f'   위험도: {risk_emoji} {risk_level} ({pre_risk})')
     print(f'   경고 신호: {total_warnings}건 (🔴 위험 {danger_count}건)')
     print(f'   → reports/latest.json 저장 완료')

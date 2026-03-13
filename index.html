@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>📈 코스피 고점 판독기</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pretendard/1.3.9/static/pretendard.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -225,6 +226,38 @@ h1{font-size:1.6rem;margin-bottom:4px;font-weight:700}
   padding:16px;
   border-top:1px solid var(--border);
   margin-top:20px;
+}
+
+.earnings-chart-wrap{
+  position:relative;
+  width:100%;
+  height:320px;
+  padding:16px 20px;
+}
+.earnings-insights{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:10px;
+  padding:0 20px 20px;
+}
+.insight-pill{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:10px 14px;
+  background:#fafbfc;
+  border:1px solid var(--border);
+  border-radius:6px;
+  font-size:.82rem;
+}
+.insight-pill .company{font-weight:600;color:var(--text)}
+.insight-pill .direction{font-weight:700;font-size:.9rem}
+.insight-pill .momentum{font-size:.75rem;color:var(--secondary);margin-top:2px}
+.no-data-msg{
+  text-align:center;
+  padding:40px 20px;
+  color:var(--tertiary);
+  font-size:.9rem;
 }
 
 .loading{text-align:center;padding:60px;color:var(--secondary)}
@@ -475,10 +508,126 @@ function render(d) {
 
   html += '</div>'; // grid-2
 
+  // 5. Earnings Trend Chart (full-width)
+  const et = data.earnings_trend;
+  html += `<div class="card" style="margin-bottom:16px">
+    <h2 data-index="⑤">이익추정치 트렌드 (Forward EPS 변화율)</h2>`;
+
+  if (et && et.labels && et.labels.length >= 2) {
+    html += `<div class="earnings-chart-wrap"><canvas id="earningsChart"></canvas></div>`;
+    // Insights pills
+    if (et.insights && et.insights.length > 0) {
+      html += `<div class="earnings-insights">`;
+      et.insights.forEach(ins => {
+        const arrow = ins.direction === '상향' ? '📈' : ins.direction === '하향' ? '📉' : '➡️';
+        const dirColor = ins.direction === '상향' ? 'var(--green)' : ins.direction === '하향' ? 'var(--red)' : 'var(--secondary)';
+        const momText = ins.recent_momentum != null
+          ? `최근 모멘텀: ${ins.recent_momentum > 0 ? '+' : ''}${ins.recent_momentum}%p`
+          : '';
+        html += `<div class="insight-pill">
+          <div>
+            <div class="company">${ins.company}</div>
+            <div class="direction" style="color:${dirColor}">${arrow} ${ins.direction} ${pct(ins.change_from_base)}</div>
+            ${ins.latest_eps != null ? `<div class="momentum">F.EPS: ${fmt(ins.latest_eps,2)}</div>` : ''}
+            ${momText ? `<div class="momentum">${momText}</div>` : ''}
+          </div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+  } else {
+    html += `<div class="no-data-msg">📊 이익추정치 데이터가 아직 충분하지 않습니다.<br>워크플로우가 2회 이상 실행되면 차트가 표시됩니다.</div>`;
+  }
+  html += `</div>`;
+
   // Timestamp
   html += `<div class="ts">마지막 업데이트: ${tsStr} · ⚠️ 본 리포트는 AI 기반 자동 분석으로, 투자 권유가 아닙니다.</div>`;
 
   $('#app').innerHTML = html;
+}
+
+function renderEarningsChart(et) {
+  if (!et || !et.labels || et.labels.length < 2) return;
+  const canvas = document.getElementById('earningsChart');
+  if (!canvas) return;
+
+  // Format date labels (MM/DD)
+  const labels = et.labels.map(d => {
+    const parts = d.split('-');
+    return parts[1] + '/' + parts[2];
+  });
+
+  const datasets = [];
+  const cfgs = [
+    { key: 'samsung', label: '삼성전자', color: '#2563eb', dash: [] },
+    { key: 'hynix',   label: 'SK하이닉스', color: '#111827', dash: [] },
+    { key: 'micron',  label: '마이크론',   color: '#dc2626', dash: [5,5] },
+  ];
+
+  cfgs.forEach(cfg => {
+    const vals = et[cfg.key];
+    if (vals && vals.some(v => v !== null)) {
+      datasets.push({
+        label: cfg.label,
+        data: vals,
+        borderColor: cfg.color,
+        backgroundColor: cfg.color + '18',
+        borderWidth: 2.5,
+        borderDash: cfg.dash,
+        pointRadius: vals.length > 30 ? 0 : 3,
+        pointHoverRadius: 5,
+        tension: 0.3,
+        spanGaps: true,
+        fill: false,
+      });
+    }
+  });
+
+  new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { font: { family: 'Pretendard', size: 12, weight: '600' }, padding: 16, usePointStyle: true }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(0,0,0,.85)',
+          titleFont: { family: 'Pretendard', size: 12 },
+          bodyFont: { family: 'Pretendard', size: 12 },
+          callbacks: {
+            title: items => et.labels[items[0].dataIndex] || '',
+            label: item => `${item.dataset.label}: ${item.parsed.y != null ? (item.parsed.y >= 0 ? '+' : '') + item.parsed.y.toFixed(1) + '%' : '-'}`
+          }
+        },
+        annotation: undefined,
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: { family: 'Pretendard', size: 11 }, maxTicksLimit: 12, color: '#9ca3af' }
+        },
+        y: {
+          grid: { color: '#f3f4f6' },
+          ticks: {
+            font: { family: 'Pretendard', size: 11 },
+            color: '#9ca3af',
+            callback: v => (v >= 0 ? '+' : '') + v + '%'
+          },
+          title: {
+            display: true,
+            text: '기준일 대비 변화율 (%)',
+            font: { family: 'Pretendard', size: 11, weight: '500' },
+            color: '#9ca3af'
+          }
+        }
+      }
+    }
+  });
 }
 
 loadData().then(d => {
@@ -487,6 +636,10 @@ loadData().then(d => {
     return;
   }
   render(d);
+  // Render Chart.js after DOM is ready
+  if (d.data && d.data.earnings_trend) {
+    renderEarningsChart(d.data.earnings_trend);
+  }
 });
 </script>
 </body>
