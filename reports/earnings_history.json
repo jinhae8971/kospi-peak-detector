@@ -1350,5 +1350,25 @@
     "micron_trailing_eps": 21.18,
     "micron_price": 357.22,
     "micron_source_url": "https://finance.yahoo.com/quote/MU/financials/"
+  },
+  {
+    "date": "2026-04-05",
+    "samsung_forward_eps": 26367.0,
+    "samsung_consensus_year": "2026.12.",
+    "samsung_trailing_eps": null,
+    "samsung_price": 186200.0,
+    "samsung_source": "naver_consensus",
+    "samsung_source_url": "https://finance.naver.com/item/coinfo.naver?code=005930&param=etc&cmp_cd=005930",
+    "hynix_forward_eps": 194874.0,
+    "hynix_consensus_year": "2026.12.",
+    "hynix_trailing_eps": null,
+    "hynix_price": 876000.0,
+    "hynix_source": "naver_consensus",
+    "hynix_source_url": "https://finance.naver.com/item/coinfo.naver?code=000660&param=etc&cmp_cd=000660",
+    "micron_source": "yahoo_finance",
+    "micron_forward_eps": 98.55,
+    "micron_trailing_eps": 21.21,
+    "micron_price": 366.24,
+    "micron_source_url": "https://finance.yahoo.com/quote/MU/financials/"
   }
 ]
